@@ -1,0 +1,150 @@
+---
+title: "Bericht Berlin 2018/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+# load libraries
+library(tidyverse)
+library(lubridate)
+library(knitr)
+#install.packages("kableExtra") 
+library(kableExtra)
+#install.packages("sjPlot")
+library(sjPlot)
+
+# load data
+
+Airbnb <- read.csv("/Users/ninafrings/Documents/UNI/Master/FS 21/Praxisseminar/DataAnalytics4PB/1_data/airbnb.csv")
+
+```
+
+```{r }
+# Wähle Jahre 2018 und 2019 aus
+Airbnb_1819 <- Airbnb %>% 
+  filter(Erstellungsdatum > "2018-01-01", 
+         Erstellungsdatum < "2019-12-31")
+```
+
+### Präambel
+
+Dieser Bericht analysiert Veränderungen in den Neueinstellungen und den Preisen von Airbnb Objekten in Berlin, Deutschland. Er wurde zum Zwecke der Übung auf Basis öffentlich verfügbarer Daten ^[Daten wurde heruntergeladen von [insideairbnb.com](http://insideairbnb.com/get-the-data.html)] erstellt und repräsentiert einzig die Position der Autoren. Es besteht keine Beziehung zu Airbnb.  
+
+### Neueinstellungen
+
+#### Entwicklung
+
+Seit `r min(Airbnb_1819$Erstellungsdatum)` wurden in Berlin `r nrow(Airbnb_1819)` Airbnb Wohnungen eingestellt. Von diesen Wohnungn weisen aktuell `r round(mean(Airbnb_1819$Verfügbarkeit_90Tage > 0) * 100)`% Verfügbarkeiten von durchschnittlich `r round(mean(Airbnb_1819$Verfügbarkeit_90Tage[Airbnb_1819$Verfügbarkeit_90Tage>0]),1)`  Tagen für die nächsten 3 Monate auf.
+
+**Einstellungen von Airbnb Wohnungen haben im letzten Jahr stark zugenommen. Im Jahr 2019 wurden insgesamt `r n_2019 <- sum(year(Airbnb_1819$Erstellungsdatum) == 2019); n_2019` neue Wohnungen eingestellt, wohingegend im Jahr 2018 nur `r n_2018 <- sum(year(Airbnb_1819$Erstellungsdatum) == 2018); n_2018` Wohnungen eingestellt wurden. Dies entspricht einem Zuwachs von `r (round(n_2019/n_2018, 2) - 1)*100`%.**
+
+```{r, fig.cap = cap }
+# Plotte Häufigkeiten
+(fig.asp = .5)
+ggplot(Airbnb_1819 %>% 
+      group_by(Jahr = year(Erstellungsdatum), 
+               Monat_tmp = month(Erstellungsdatum)) %>% 
+      summarize(Monat = as_factor(paste(first(Jahr), first(Monat_tmp), sep = '-')),
+                Wohnungen = n()), 
+      aes(x = Monat, y = Wohnungen, fill = Jahr)) + 
+      geom_bar(stat = 'identity', position = 'dodge') + 
+      theme(legend.position = 'none',
+      axis.text.x = element_text(angle = 45, hjust = 1)) 
+cap = 'Abbildung 1. Neueinstellungen pro Monat'
+```
+
+#### Stadtteile
+
+```{r}
+# Berechne Häufigkeiten über die Bezirke
+stadtteile <- Airbnb_1819 %>% 
+              group_by(Stadtteil, 
+                       Jahr = year(Erstellungsdatum)) %>% 
+              summarize(Wohnungen = n()) %>% 
+              ungroup() %>% 
+              arrange(desc(Jahr), Wohnungen) %>% 
+              mutate(Stadtteil = as_factor(Stadtteil))
+```
+
+Neueinstellungen fallen nach wie vor sehr unterschiedlich in den Bezirken aus. Die meisten Neueinstellungen im Jahr 2019 gab es in `r stadtteile %>% filter(Jahr == 2019) %>% pull(Stadtteil) %>% last()`, die wenigsten in `r stadtteile %>% filter(Jahr == 2019) %>% pull(Stadtteil) %>% first()`.
+
+```{r}
+# Veränderung über die Stadtteile
+veränderung = stadtteile %>% 
+  group_by(Stadtteil) %>% 
+  summarize(veränderung = (100 * (Wohnungen[Jahr == 2019]/Wohnungen[Jahr == 2018] - 1)) %>% round(1))
+
+# Geringsten Veränderung
+min_veränderung = veränderung %>% 
+  slice(which.min(veränderung)) %>% 
+  pull(veränderung)
+
+# Stadteil mit der geringsten Veränderung
+min_stadtteil = veränderung %>% 
+  slice(which.min(veränderung)) %>% 
+  pull(Stadtteil)
+
+# Grösste Veränderung
+max_veränderung = veränderung %>% 
+  slice(which.max(veränderung)) %>% 
+  pull(veränderung)
+
+# Stadteil mit der grössten Veränderung
+max_stadtteil = veränderung %>% 
+  slice(which.max(veränderung)) %>% 
+  pull(Stadtteil)
+```
+
+Die grössten Veränderungen gab es in Marzahn - Hellersdorf und Treptow - Köpenick. In Marzahn - Hellersdorf `r ifelse(min_veränderung > 0, "wuchsen", "schrumpften")` die Neueinstellungen um `r min_veränderung`%, in Treptow - Köpenick `r ifelse(max_veränderung > 0, "wuchsen", "schrumpften")` die Neueinstellungen um `r max_veränderung`%.
+
+```{r, fig.cap = cap}
+(fig.asp = .5)
+cap = 'Abbildung 2. Neueinstellungen pro Bezirk.'
+# Plotte Häufigkeieten der Stadtteile
+ggplot(stadtteile, 
+       aes(y = Stadtteil, x = Wohnungen, group = Jahr, fill = Jahr)) + 
+       geom_bar(stat = 'identity', position = 'dodge') + 
+       theme(legend.position = 'none') + 
+       labs(y = '')
+```
+
+### Preis
+
+Der durchschnittliche Preis der Neueinstellungen beträgt `r round(mean(airbnb_1819 %>% pull(Preis)),1)` €. Im Vergleich zum Vorjahr sind die Preise der Neueinstellungen um `r m <- mean(airbnb_1819 %>% filter(year(Erstellungsdatum) == 2019) %>% pull(Preis))/ mean(airbnb_1819 %>% filter(year(Erstellungsdatum) == 2018) %>% pull(Preis)) ; round(m, 3) * 100 - 100`% gestiegen.
+
+#### Einfluss Ausstattung 
+
+```{r}
+# Vektor mit Ausstattungsmerkmalen
+ausstattung_var <- c('Küche','Wifi','TV','Kaffeemaschine',
+                     'Geschirrspüler','Terrasse_Balkon',
+                     'Check_in_24h')
+
+# Bestimme Preise als Funktion der Ausstattungsmerkmale
+ausstattung <- 
+  Airbnb_1819 %>% 
+    select(all_of(ausstattung_var), Preis) %>%
+    pivot_longer(-Preis,
+    names_to = 'Ausstattung',
+    values_to = 'Ausstattung_vorhanden') %>% 
+    group_by(Ausstattung) %>% 
+    summarize(Nicht_vorhanden = mean(Preis[!Ausstattung_vorhanden]),
+              Vorhanden = mean(Preis[Ausstattung_vorhanden]),
+              Differenz = Vorhanden - Nicht_vorhanden, 
+              Prozent_vorhanden = mean(Ausstattung_vorhanden) * 100) %>% 
+    arrange(desc(Differenz))
+```
+Das Austattungsmerkmal mit dem grössten Unterschied im Preis ist `r ausstattung %>% pull(Ausstattung) %>% first()` (`r ausstattung %>% pull(Differenz) %>% first() %>% round(1)`), das Austattungsmerkmal mit dem kleinsten Unterschied im Preis ist `r ausstattung %>% pull(Ausstattung) %>% last()` (`r ausstattung %>% pull(Differenz) %>% last() %>% round(1)`).
+
+**Der stark negative Effekt der Küche überrascht, er könnte jedoch durch die Art der Unterkunft moderiert werden, gegeben dass auch Hotels im Angebot enthalten sind.**
+
+```{r, escape = FALSE}
+# Plotte Tabelle mit Austattungsmerkmalen
+ausstattung %>% kable(format = 'html', digits = 2)
+caption = 'Tabelle 1. Austattung und Einfluss auf den Preis'
+col.names = c('', 'Preis<br>Nicht-vorh.', 'Preis<br>vorh.', 'Differenz', 'Prozent<br>vorh.', escape = FALSE)
+```
+
